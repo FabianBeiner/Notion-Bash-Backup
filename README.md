@@ -1,3 +1,12 @@
+# Notion-Bash-Backup
+A simple Bash script to automatically download your Notion workspace/content.
+
+**This is an updated and slightly improved version of the original script by [gidoBOSSftw5731](https://github.com/gidoBOSSftw5731/notion-auto-pull).** 💕
+
+---
+
+_Following is the original README.md:_
+
 # notion-auto-pull
 Bash script to automatically download a notion workspace
 
