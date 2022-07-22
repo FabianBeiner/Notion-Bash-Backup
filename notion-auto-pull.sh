@@ -5,8 +5,8 @@ NOTION_TOKEN=""
 NOTION_SPACE_ID=""
 
 # Variables.
-JQ_BIN="/www/htdocs/w0097ac1/bin/jq" # https://stedolan.github.io/jq/
-NOTION_BACKUP_PATH="/home/fabian/backups" # Path where the backup should be stored.
+JQ_BIN="/usr/bin/jq" # https://stedolan.github.io/jq/
+NOTION_BACKUP_PATH="/home/user/backups" # Path where the backup should be stored.
 NOTION_ZIP="Notion-Backup-$(date +%Y-%m-%d).zip" # Filename of the backup.
 TIMEOUT=300 # Timeout in seconds.
 
