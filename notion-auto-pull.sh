@@ -1,44 +1,60 @@
 #!/bin/bash
 
-export token="{TOKEN}"
-export spaceid="{SPACEID}"
+# See: https://joel.wiki/automatic-notion-backup-with-github
+NOTION_TOKEN="" 
+NOTION_SPACE_ID=""
 
-cd
-mkdir notion_backups 2>/dev/null
-cd notion_backups
+# Variables.
+JQ_BIN="/www/htdocs/w0097ac1/bin/jq" # https://stedolan.github.io/jq/
+NOTION_BACKUP_PATH="/home/fabian/backups" # Path where the backup should be stored.
+NOTION_ZIP="Notion-Backup-$(date +%Y-%m-%d).zip" # Filename of the backup.
+TIMEOUT=300 # Timeout in seconds.
 
-#get task
-task=`curl --header "Content-Type: application/json" --data '{"task":{"eventName":"exportSpace","request":{"spaceId":"'${spaceid}'","exportOptions":{"exportType":"markdown","timeZone":"America/New_York","locale":"en"}}}}' --cookie "token_v2=${token}" https://www.notion.so/api/v3/enqueueTask/ --output - --fail --silent --show-error`
+# Check if the backup destination or file exists.
+NOTION_BACKUP_PATH="${NOTION_BACKUP_PATH%/}/"
+if [ ! -d "${NOTION_BACKUP_PATH%/}/" ]; then
+	echo "${NOTION_BACKUP_PATH%/}/ does not exist. Aborting." && exit 255
+fi
+cd "${NOTION_BACKUP_PATH%/}/" || exit
 
-#if this fails, your token is probably wrong, but do check the http error, 401 is forbidden which is token issue.
-if [ "$?" != 0 ]
+if [ -f "${NOTION_BACKUP_PATH%/}/${NOTION_ZIP}" ]; then
+    echo "${NOTION_ZIP} already exists in ${NOTION_BACKUP_PATH%/}/. Aborting." && exit 255
+fi
+
+# Start the Notion export.
+DATA="{\"task\":{\"eventName\":\"exportSpace\",\"request\":{\"spaceId\":\"${NOTION_SPACE_ID}\",\"exportOptions\":{\"exportType\":\"html\",\"timeZone\":\"Europe/Berlin\",\"locale\":\"en\",\"includeContents\":\"everything\",\"flattenExportFiletree\":false}}}}"
+EXPORT=$(curl https://www.notion.so/api/v3/enqueueTask -H 'Content-Type: application/json; charset=utf-8' -b "token_v2=${NOTION_TOKEN}" --data "${DATA}" -o - -f -s -S)
+
+# If this fails, the token is probably wrong, but check the HTTP error. 401 is forbidden, which is a token issue.
+if [ ! "${EXPORT}" ]
 then
 	exit $?
 fi
 
-#command to get task ID
-#echo $task  | jq '.taskId'
+# Save time to check if the script or export hangs.
+BEGIN=$(date +%s)
 
-starttime=`date +%s`
-
-
+# Wait for the export to be ready.
 while true
 do
-	#check for readiness
-	out=$(curl --cookie "token_v2=${token}" --header "Content-Type: application/json" --data "{\"taskIds\": [`echo $task  | jq '.taskId'`]}" https://www.notion.so/api/v3/getTasks/ --output - --fail --silent --show-error)
+	# Get updates from the task.
+	EXPORT_ID=$(echo "${EXPORT}" | ${JQ_BIN} '.taskId' | xargs)
+	DATA="{\"taskIds\":[\"${EXPORT_ID}\"]}"
+	TASK=$(curl https://www.notion.so/api/v3/getTasks -H 'Content-Type: application/json; charset=utf-8' -b "token_v2=${NOTION_TOKEN}" --data "${DATA}" -o - -f -s -S)
 
-	#echo $out
-
-	if [ "`echo $out | jq '.results[0].state'`" == '"success"' ]
+	if [ "$(echo "${TASK}" | ${JQ_BIN} '.results[0].state')" = '"success"' ]
 	then
-		curl --fail --silent --show-error -o ./`date -Iminutes`.zip --header "Content-Type: application/json"  --cookie "token_v2=${token}" `echo "$out" | jq '.results[0].status.exportURL'|sed 's/^"\(.*\)"$/\1/'` 
+		DOWNLOAD_URL=$(echo "${TASK}" | ${JQ_BIN} '.results[0].status.exportURL' | xargs)
+		curl -L -o ./"${NOTION_ZIP}" -f -s -S "${DOWNLOAD_URL}"
 		exit $?
 	fi
 
-	if (( $starttime+60 < `date +%s` ))
+	# If it took longer than the defined timeout, something probably failed.
+	if [ "$(date +%s)" -gt $((BEGIN + TIMEOUT)) ]
 	then
-		echo "tried for 60 seconds and it did not provide a download!"
+		echo "Tried to export for ${TIMEOUT} seconds, but Notion did not provide the download. Aborting."
 		exit 255
 	fi
-	sleep 1
+
+	sleep $((5+RANDOM % (10-5)))
 done
